@@ -1,51 +1,69 @@
 #!/usr/bin/env node
-
-import inquirer, { Questions, Question } from "inquirer";
-import colors from "colors";
-import fs from "fs";
-import filePath from "inquirer-file-path";
 import path from "path";
+import fs from "fs";
 import papa from "papaparse";
+import colors from "colors";
 import pad from "pad";
 
-inquirer.registerPrompt("filepath", filePath);
+import program from "commander";
+import { cpus } from "os";
 
-const getSourceCSVFile = async () => {
-  const fileQuestion = {
-    type: "filepath",
-    name: "fintrocsv",
-    message: "Please select input csv file (Fintro format)",
-    basePath: "./"
-  } as Question;
-
-  const questions: Questions<{ fintrocsv: string }> = [fileQuestion];
-
-  while (true) {
-    const answers = await inquirer.prompt(questions);
-    if (answers.fintrocsv.endsWith(".csv")) {
-      return answers.fintrocsv;
-    }
-    console.log(colors.red("The file selected is not a CSV file !"));
+function checkFileInput(file: string) {
+  if (!fs.existsSync(file)) {
+    console.log(colors.red(`'${file}' is not a file`));
+    return false;
   }
-};
+  if (!file.toLowerCase().endsWith(".csv")) {
+    console.log(colors.red("The file must be a *.csv"));
+    return false;
+  }
+  return true;
+}
 
-(async () => {
-  const file = await getSourceCSVFile();
-  const fileSelected = path.join("./", file);
-  const fintroFileContent = fs.readFileSync(fileSelected, {
-    encoding: "utf-8"
+function convertRowToYnabFormat(fintroCsvRow: any, fields: string[]) {
+  const amount = +fintroCsvRow[fields[3]].replace(".", "").replace(",", ".");
+  return {
+    Date: fintroCsvRow[fields[1]],
+    Payee: fintroCsvRow[fields[5]],
+    Category: "",
+    Memo: fintroCsvRow[fields[6]],
+    Outflow: amount < 0 ? Math.abs(amount) : 0,
+    Inflow: amount > 0 ? Math.abs(amount) : 0
+  };
+}
+
+program.arguments("<fintroFile>").action(fintroFile => {
+  console.log(`file selected =>  ${fintroFile}`);
+  if (!checkFileInput(fintroFile)) return;
+
+  const fintroFileContent = fs.readFileSync(fintroFile, {
+    encoding: "latin1"
   });
-  console.log("source read, nb lines : ", fintroFileContent.split("\n").length);
 
-  const csvParsed = papa.parse(fintroFileContent, {
+  const csvParsed = papa.parse(fintroFileContent.trim(), {
     delimiter: ";",
     header: true
   });
   if (csvParsed.errors.length > 0) {
     console.log(colors.red(`${csvParsed.errors.length} Errors occured : `));
     csvParsed.errors.forEach(e => {
-      console.log(colors.red(pad(15, e.message)));
+      console.log(colors.red(` - ROW n° ${e.row} => ${e.message}`));
     });
   } else {
+    const newFormat = csvParsed.data.map(row =>
+      convertRowToYnabFormat(row, csvParsed.meta.fields)
+    );
+    const ynabCsv = papa.unparse(newFormat, {
+      header: true,
+      delimiter: ","
+    });
+
+    const newName = fintroFile.replace(".csv", "-YNAB.csv");
+
+    fs.writeFileSync(newName, ynabCsv, { encoding: "utf-8" });
+
+    console.log(colors.green(`YNAB File ${newName} written!`));
   }
-})();
+});
+
+program.parse(process.argv);
