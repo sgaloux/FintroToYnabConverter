@@ -2,7 +2,12 @@
 
 import inquirer, { Questions, Question } from "inquirer";
 import colors from "colors";
+import fs from "fs";
 import filePath from "inquirer-file-path";
+import path from "path";
+import papa from "papaparse";
+import pad from "pad";
+
 inquirer.registerPrompt("filepath", filePath);
 
 const getSourceCSVFile = async () => {
@@ -24,9 +29,23 @@ const getSourceCSVFile = async () => {
   }
 };
 
-const process = async () => {
+(async () => {
   const file = await getSourceCSVFile();
-  console.log("File selected", file);
-};
+  const fileSelected = path.join("./", file);
+  const fintroFileContent = fs.readFileSync(fileSelected, {
+    encoding: "utf-8"
+  });
+  console.log("source read, nb lines : ", fintroFileContent.split("\n").length);
 
-process();
+  const csvParsed = papa.parse(fintroFileContent, {
+    delimiter: ";",
+    header: true
+  });
+  if (csvParsed.errors.length > 0) {
+    console.log(colors.red(`${csvParsed.errors.length} Errors occured : `));
+    csvParsed.errors.forEach(e => {
+      console.log(colors.red(pad(15, e.message)));
+    });
+  } else {
+  }
+})();
