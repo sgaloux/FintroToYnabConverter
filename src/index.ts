@@ -6,7 +6,8 @@ import colors from "colors";
 import pad from "pad";
 
 import program from "commander";
-import { cpus } from "os";
+import { AccountsProcessor } from "./AccountsProcessor";
+import { IMatchedFile } from "./interfaces/IMatchedFile";
 
 function checkFileInput(file: string) {
   if (!fs.existsSync(file)) {
@@ -20,50 +21,52 @@ function checkFileInput(file: string) {
   return true;
 }
 
-function convertRowToYnabFormat(fintroCsvRow: any, fields: string[]) {
-  const amount = +fintroCsvRow[fields[3]].replace(".", "").replace(",", ".");
+function matchStructure(file: string): IMatchedFile | null {
+  const regex = /^(BE\d{14})-(\d{8}).csv$/gm;
+  const m = regex.exec(file);
+  if (m === null) return null;
   return {
-    Date: fintroCsvRow[fields[1]],
-    Payee: fintroCsvRow[fields[5]],
-    Category: "",
-    Memo: fintroCsvRow[fields[6]],
-    Outflow: amount < 0 ? Math.abs(amount) : 0,
-    Inflow: amount > 0 ? Math.abs(amount) : 0
+    account: m[1],
+    filename: file
   };
 }
 
-program.arguments("<fintroFile>").action(fintroFile => {
-  console.log(`file selected =>  ${fintroFile}`);
-  if (!checkFileInput(fintroFile)) return;
+function scanFolder(folder: string) {
+  const files = fs.readdirSync(folder);
 
-  const fintroFileContent = fs.readFileSync(fintroFile, {
-    encoding: "latin1"
-  });
+  const processor = new AccountsProcessor();
 
-  const csvParsed = papa.parse(fintroFileContent.trim(), {
-    delimiter: ";",
-    header: true
-  });
-  if (csvParsed.errors.length > 0) {
-    console.log(colors.red(`${csvParsed.errors.length} Errors occured : `));
-    csvParsed.errors.forEach(e => {
-      console.log(colors.red(` - ROW n° ${e.row} => ${e.message}`));
-    });
-  } else {
-    const newFormat = csvParsed.data.map(row =>
-      convertRowToYnabFormat(row, csvParsed.meta.fields)
-    );
-    const ynabCsv = papa.unparse(newFormat, {
-      header: true,
-      delimiter: ","
-    });
+  const validFiles = files
+    .map(matchStructure)
+    .filter(s => s !== null) as IMatchedFile[];
 
-    const newName = fintroFile.replace(".csv", "-YNAB.csv");
+  validFiles.forEach(f => processor.addFile(f.account, f.filename));
+  processor.processAll();
+}
 
-    fs.writeFileSync(newName, ynabCsv, { encoding: "utf-8" });
-
-    console.log(colors.green(`YNAB File ${newName} written!`));
+function convertSingleFile(file: string) {
+  const processor = new AccountsProcessor();
+  const matched = matchStructure(file);
+  if (matched != null) {
+    processor.addFile(matched.account, matched.filename);
   }
-});
+  processor.processAll();
+}
+
+program
+  .command("scan")
+  .alias("s")
+  .description(
+    "Scan a folder for fintro exports (csv files), merge and convert them to ynab format"
+  )
+  .arguments("<folder>")
+  .action(scanFolder);
+
+program
+  .command("convert")
+  .alias("c")
+  .description("Convert a single fintro csv to ynab format")
+  .arguments("<fintroFile>")
+  .action(convertSingleFile);
 
 program.parse(process.argv);
