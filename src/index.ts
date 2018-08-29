@@ -34,22 +34,13 @@ function matchStructure(file: string): IMatchedFile | null {
 function scanFolder(folder: string) {
   const files = fs.readdirSync(folder);
 
-  const processor = new AccountsProcessor();
+  const processor = new AccountsProcessor(folder);
 
   const validFiles = files
     .map(matchStructure)
     .filter(s => s !== null) as IMatchedFile[];
 
   validFiles.forEach(f => processor.addFile(f.account, f.filename));
-  processor.processAll();
-}
-
-function convertSingleFile(file: string) {
-  const processor = new AccountsProcessor();
-  const matched = matchStructure(file);
-  if (matched != null) {
-    processor.addFile(matched.account, matched.filename);
-  }
   processor.processAll();
 }
 
@@ -61,12 +52,5 @@ program
   )
   .arguments("<folder>")
   .action(scanFolder);
-
-program
-  .command("convert")
-  .alias("c")
-  .description("Convert a single fintro csv to ynab format")
-  .arguments("<fintroFile>")
-  .action(convertSingleFile);
 
 program.parse(process.argv);
