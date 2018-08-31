@@ -31,10 +31,10 @@ function matchStructure(file: string): IMatchedFile | null {
   };
 }
 
-function scanFolder(folder: string) {
+function scanFolder(folder: string, lastDate?: string) {
   const files = fs.readdirSync(folder);
 
-  const processor = new AccountsProcessor(folder);
+  const processor = new AccountsProcessor(folder, lastDate);
 
   const validFiles = files
     .map(matchStructure)
@@ -50,7 +50,7 @@ program
   .description(
     "Scan a folder for fintro exports (csv files), merge and convert them to ynab format"
   )
-  .arguments("<folder>")
+  .arguments("<folder> [lastdate]")
   .action(scanFolder);
 
 program.parse(process.argv);

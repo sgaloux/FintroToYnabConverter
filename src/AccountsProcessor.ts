@@ -4,12 +4,19 @@ import colors from "colors";
 import _ from "lodash";
 import moment from "moment";
 import * as path from "path";
+import { IYnabRow } from "./interfaces/IYnabRow";
 
 export class AccountsProcessor {
   private noCheckNumber = 1;
   private accountsFiles: { [account: string]: string[] } = {};
+  private lastDate: moment.Moment | undefined;
 
-  constructor(private basePath: string) {}
+  constructor(private basePath: string, lastDate?: string) {
+    if (lastDate) {
+      this.lastDate = moment(lastDate);
+      console.log("Last date parsed", this.lastDate.format());
+    }
+  }
 
   addFile(account: string, filename: string): void {
     if (this.accountsFiles[account] == undefined) {
@@ -51,7 +58,10 @@ export class AccountsProcessor {
     return final;
   }
 
-  private convertRowToYnabFormat(fintroCsvRow: any, fields: string[]) {
+  private convertRowToYnabFormat(
+    fintroCsvRow: any,
+    fields: string[]
+  ): IYnabRow {
     const amount = +fintroCsvRow[fields[3]].replace(".", "").replace(",", ".");
 
     return {
@@ -63,6 +73,28 @@ export class AccountsProcessor {
       Outflow: amount < 0 ? Math.abs(amount) : 0,
       Inflow: amount > 0 ? Math.abs(amount) : 0
     };
+  }
+
+  private filterUncheckValues(rows: IYnabRow[]): IYnabRow[] {
+    let cloned = [...rows];
+    rows.filter(d => d.Check.startsWith("9999-")).forEach(unchecked => {
+      var found = rows.find(
+        r =>
+          r.Date.format() === unchecked.Date.format() &&
+          r.Inflow === unchecked.Inflow &&
+          r.Outflow === unchecked.Outflow &&
+          r.Memo === unchecked.Memo
+      );
+      if (found) {
+        const index = rows.indexOf(unchecked);
+        console.log(`Removing row ${unchecked.Check} at index ${index}`);
+
+        if (index > -1) {
+          cloned.splice(index, 1);
+        }
+      }
+    });
+    return cloned;
   }
 
   mergeAccountData(account: string) {
@@ -85,13 +117,18 @@ export class AccountsProcessor {
       .sortBy(["Check", "Date"])
       .value();
 
+    let filtered = this.filterUncheckValues(sorted);
+    if (this.lastDate) {
+      filtered = filtered.filter(d => d.Date.isAfter(this.lastDate));
+    }
+
     const years = _.chain(sorted)
       .map(d => d.Date.year())
       .uniq()
       .value();
 
     years.forEach(year => {
-      const data = _.chain(sorted)
+      const data = _.chain(filtered)
         .filter(d => d.Date.year() === year)
         .map(d => ({ ...d, Date: d.Date.format("DD/MM/YYYY") }))
         .uniqBy("Check")
