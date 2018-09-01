@@ -53,8 +53,9 @@ export class AccountsProcessor {
   private getCheckNumber(numberText: string): string {
     const final =
       numberText.length === 5
-        ? `9999-${(this.noCheckNumber++).toString().padStart(4, "0")}`
-        : numberText;
+        ? ""
+        : // ? `9999-${(this.noCheckNumber++).toString().padStart(4, "0")}`
+          numberText;
     return final;
   }
 
@@ -131,7 +132,6 @@ export class AccountsProcessor {
       const data = _.chain(filtered)
         .filter(d => d.Date.year() === year)
         .map(d => ({ ...d, Date: d.Date.format("DD/MM/YYYY") }))
-        .uniqBy("Check")
         .value();
 
       const ynabCsv = papa.unparse(data, {
